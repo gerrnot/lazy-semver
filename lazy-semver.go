@@ -4,19 +4,36 @@ import (
 	"flag"
 	"fmt"
 	"github.com/antchfx/xmlquery"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"io/ioutil"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 func main() {
 	filePath, xPathPattern, baseVersionRegex := handleFlags()
-	baseVersion := getBaseVersion(*filePath, *xPathPattern) // base version is major.minor version and looks like 1.0
-
-	fmt.Printf("Args were filePath: %s, %s, %s\n", *filePath, *xPathPattern, *baseVersionRegex)
-	fmt.Printf("Parsed base version is: %s\n", baseVersion)
+	baseVersion := getBaseVersion(filePath, xPathPattern, baseVersionRegex) /* major.minor part of SemVer */
+	commitCount := getCommitCount(*filePath)                                /* patch  part of SemVer */
+	calculatedVersion := fmt.Sprintf("%s.%d", baseVersion, commitCount)     /* major.minor.patch[+UTC timestamp] */
+	fmt.Print(calculatedVersion)
 }
 
-func getBaseVersion(filePath string, xPathPattern string) string {
+func getBaseVersion(filePath *string, xPathPattern *string, baseVersionRegex *string) string {
+	// rawVersionString looks like 1.0.0-SNAPSHOT here
+	rawVersionString := getOriginalVersionStringFromFile(*filePath, *xPathPattern)
+	regex, err := regexp.Compile(*baseVersionRegex)
+	if err != nil {
+		panic(err)
+	}
+	baseVersion := regex.FindString(rawVersionString)
+	// baseVersion looks like 1.0 here
+	return baseVersion
+}
+
+func getOriginalVersionStringFromFile(filePath string, xPathPattern string) string {
 	// read file
 	fileContentBytes, err := ioutil.ReadFile(filePath)
 	if err != nil {
@@ -46,7 +63,42 @@ func handleFlags() (*string, *string, *string) {
 	xPathPattern := flag.String("xPathPattern", "", "XPath Pattern to select the version. If "+
 		"empty, the whole content of the file will be used as base version string.")
 	baseVersionRegex := flag.String("baseVersionRegex", "\\d+.\\d+",
-		"the regex used to parse the base version (that is the major.minor version part)")
+		"[optional] the regex used to parse the base version (that is the major.minor version part)")
 	flag.Parse()
 	return filePath, xPathPattern, baseVersionRegex
+}
+
+func getCommitCount(filePath string) int {
+	dirPath := filepath.Dir(filePath)
+	repoPath := findGitRootRecursive(dirPath)
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		panic(err)
+	}
+	ref, err := repo.Head()
+	if err != nil {
+		panic(err)
+	}
+	cIter, err := repo.Log(&git.LogOptions{From: ref.Hash()})
+	if err != nil {
+		panic(err)
+	}
+	var cCount int
+	err = cIter.ForEach(func(c *object.Commit) error {
+		cCount++
+		return nil
+	})
+	return cCount
+}
+
+func findGitRootRecursive(basePath string) string {
+	if basePath == "" {
+		panic("Could not find a .git directory! All parent folders of given parameter filePath were searched")
+	}
+	gitDirPath := filepath.Join(basePath, ".git")
+	_, err := os.Stat(gitDirPath)
+	if err != nil {
+		findGitRootRecursive(filepath.Dir(basePath))
+	}
+	return basePath
 }
