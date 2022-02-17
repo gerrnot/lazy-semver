@@ -7,8 +7,26 @@ docker image for reading version strings from various sources and producing a la
 # developer information
 
 ## compile & execute e2e tests
-
-execute in project root folder:
 ```
 go build && go test
+```
+
+## release
+build the docker image and test it:
+```
+docker build . -t test && docker run -v "${PWD}:/mnt/input" test --filePath /mnt/input/test/resources/version.txt
+```
+should print a SemVer in last line of output!
+
+define new version(s) and upload to dockerhub:
+```
+docker tag test gernotfeichter/lazy-semver:0.0.2
+docker tag test gernotfeichter/lazy-semver:0.0
+docker tag test gernotfeichter/lazy-semver:0
+docker tag test gernotfeichter/lazy-semver:latest
+
+docker push gernotfeichter/lazy-semver:0.0.2
+docker push gernotfeichter/lazy-semver:0.0
+docker push gernotfeichter/lazy-semver:0
+docker push gernotfeichter/lazy-semver:latest
 ```
