@@ -11,14 +11,26 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 func main() {
-	filePath, xPathPattern, baseVersionRegex := handleFlags()
+	filePath, xPathPattern, baseVersionRegex, timestampRFC3339 := handleFlags()
 	baseVersion := getBaseVersion(filePath, xPathPattern, baseVersionRegex) /* major.minor part of SemVer */
-	commitCount := getCommitCount(*filePath)                                /* patch  part of SemVer */
-	calculatedVersion := fmt.Sprintf("%s.%d", baseVersion, commitCount)     /* major.minor.patch[+UTC timestamp] */
+	commitCount := getCommitCount(*filePath)
+	timestampRFC3339String := getTimestampRFC3339String(*timestampRFC3339)
+	/* patch  part of SemVer */
+	calculatedVersion := fmt.Sprintf("%s.%d%s", baseVersion, commitCount, timestampRFC3339String) /* major.minor.patch[+UTC timestamp] */
 	fmt.Print(calculatedVersion)
+}
+
+func getTimestampRFC3339String(timestampRFC3339 bool) string {
+	if timestampRFC3339 {
+		t := time.Now()
+		return "+" + t.Format(time.RFC3339)
+	} else {
+		return ""
+	}
 }
 
 func getBaseVersion(filePath *string, xPathPattern *string, baseVersionRegex *string) string {
@@ -57,15 +69,22 @@ func getOriginalVersionStringFromFile(filePath string, xPathPattern string) stri
 	}
 }
 
-func handleFlags() (*string, *string, *string) {
+func handleFlags() (*string, *string, *string, *bool) {
 	filePath := flag.String("filePath", "no filePath provided", "filePath to a filename "+
 		"including the extensions, of which the base version should be read")
-	xPathPattern := flag.String("xPathPattern", "", "XPath Pattern to select the version. If "+
-		"empty, the whole content of the file will be used as base version string.")
+	xPathPattern := flag.String("xPathPattern", "", "[optional] Only required when filePath"+
+		"refers to a file that needs special parsing (e.g. to read base version from xml/json file). "+
+		"XPath Pattern to select the version. If empty, the whole content of the file will be used as base "+
+		"version string.")
 	baseVersionRegex := flag.String("baseVersionRegex", "\\d+.\\d+",
 		"[optional] the regex used to parse the base version (that is the major.minor version part)")
+	timestampRFC3339 := flag.Bool("timestampRFC3339", false, "[optional] Attaches an ISO-1806 "+
+		"timestamp as SemVer build reference. "+
+		"Example of calculated version: 0.0.1+2022-02-17T11:12:27+01:00"+
+		"The timestamp format is described here: "+
+		"https://www.ietf.org/rfc/rfc3339.txt. Go defines a time format string with that name!")
 	flag.Parse()
-	return filePath, xPathPattern, baseVersionRegex
+	return filePath, xPathPattern, baseVersionRegex, timestampRFC3339
 }
 
 func getCommitCount(filePath string) int {
