@@ -17,11 +17,10 @@ import (
 func main() {
 	filePath, xPathPattern, baseVersionRegex, timestampRFC3339 := handleFlags()
 	baseVersion := getBaseVersion(filePath, xPathPattern, baseVersionRegex) /* major.minor part of SemVer */
-	commitCount := getCommitCount(*filePath)
-	timestampRFC3339String := getTimestampRFC3339String(*timestampRFC3339)
-	/* patch  part of SemVer */
-	calculatedVersion := fmt.Sprintf("%s.%d%s", baseVersion, commitCount, timestampRFC3339String) /* major.minor.patch[+UTC timestamp] */
-	fmt.Print(calculatedVersion)
+	commitCount := getCommitCount(*filePath)                                /* patch  part of SemVer */
+	timestampRFC3339String := getTimestampRFC3339String(*timestampRFC3339)  /* +build  part of SemVer */
+	calculatedVersion := fmt.Sprintf("%s.%d%s", baseVersion, commitCount, timestampRFC3339String)
+	fmt.Print(calculatedVersion) /* major.minor.patch[+UTC timestamp] */
 }
 
 func getTimestampRFC3339String(timestampRFC3339 bool) string {
@@ -117,7 +116,7 @@ func findGitRootRecursive(basePath string) string {
 	gitDirPath := filepath.Join(basePath, ".git")
 	_, err := os.Stat(gitDirPath)
 	if err != nil {
-		findGitRootRecursive(filepath.Dir(basePath))
+		return findGitRootRecursive(filepath.Dir(basePath))
 	}
 	return basePath
 }
