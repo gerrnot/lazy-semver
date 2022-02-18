@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"os/exec"
@@ -21,12 +22,14 @@ func getTestPaths() (string, string) {
 		filepath.Join(currentPathFull, "test", "resources")
 }
 
-func Test_scenarioMavenWithTimestamp(t *testing.T) {
+func Test_scenarioMavenWithTimestampAndResultFile(t *testing.T) {
+	const resultFilePath = "/tmp/lazy-semver-test"
 	cmd := exec.Command(
 		lazySemVerBinPath,
-		"--filePath", filepath.Join(testResourcesBasePath, "pom.xml"),
+		"--inputFilePath", filepath.Join(testResourcesBasePath, "pom.xml"),
 		"--xPathPattern", "/project/version",
 		"--timestampRFC3339",
+		"--resultFilePath", resultFilePath,
 	)
 	cmd.Dir = testResourcesBasePath
 	var stdOutBuffer bytes.Buffer
@@ -44,18 +47,27 @@ func Test_scenarioMavenWithTimestamp(t *testing.T) {
 		panic(err)
 	}
 	if !expectedVersion.MatchString(stdout) {
-		t.Errorf("Expected version to match regex '%s', but got '%s' which did not match. Stderr was: '%s'",
+		t.Errorf("Expected version to match regex '%s', but got '%s', which did not match. Stderr was: '%s'",
 			expectedVersion, stdout, stderr)
 	}
 	if errR != nil {
 		panic(err)
+	}
+	resultFileContent, err := os.ReadFile(resultFilePath)
+	resultFileContentString := string(resultFileContent)
+	if err != nil {
+		panic(err)
+	}
+	if !expectedVersion.MatchString(resultFileContentString) {
+		panic(fmt.Sprintf("Expected file %s to match %s, but got %s, which did not match.",
+			resultFilePath, expectedVersion, resultFileContentString))
 	}
 }
 
 func Test_scenarioPlainFile(t *testing.T) {
 	cmd := exec.Command(
 		lazySemVerBinPath,
-		"--filePath", filepath.Join(testResourcesBasePath, "version.txt"),
+		"--inputFilePath", filepath.Join(testResourcesBasePath, "version.txt"),
 	)
 	cmd.Dir = testResourcesBasePath
 	var stdOutBuffer bytes.Buffer

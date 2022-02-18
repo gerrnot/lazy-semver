@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/antchfx/xmlquery"
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"io/ioutil"
 	"os"
@@ -15,12 +16,19 @@ import (
 )
 
 func main() {
-	filePath, xPathPattern, baseVersionRegex, timestampRFC3339 := handleFlags()
-	baseVersion := getBaseVersion(filePath, xPathPattern, baseVersionRegex) /* major.minor part of SemVer */
-	commitCount := getCommitCount(*filePath)                                /* patch  part of SemVer */
-	timestampRFC3339String := getTimestampRFC3339String(*timestampRFC3339)  /* +build  part of SemVer */
+	inputFilePath, xPathPattern, baseVersionRegex, timestampRFC3339, resultFilePath := handleFlags()
+	baseVersion := getBaseVersion(inputFilePath, xPathPattern, baseVersionRegex) /* major.minor part of SemVer */
+	commitCount := getCommitCount(*inputFilePath)                                /* patch  part of SemVer */
+	timestampRFC3339String := getTimestampRFC3339String(*timestampRFC3339)       /* +build  part of SemVer */
 	calculatedVersion := fmt.Sprintf("%s.%d%s", baseVersion, commitCount, timestampRFC3339String)
 	fmt.Print(calculatedVersion) /* major.minor.patch[+UTC timestamp] */
+	considerWritingOutputFile(resultFilePath, &calculatedVersion)
+}
+
+func considerWritingOutputFile(resultFilePath *string, calculatedVersion *string) {
+	if *resultFilePath != "" {
+		os.WriteFile(*resultFilePath, []byte(*calculatedVersion), os.FileMode(filemode.Regular))
+	}
 }
 
 func getTimestampRFC3339String(timestampRFC3339 bool) string {
@@ -32,9 +40,9 @@ func getTimestampRFC3339String(timestampRFC3339 bool) string {
 	}
 }
 
-func getBaseVersion(filePath *string, xPathPattern *string, baseVersionRegex *string) string {
+func getBaseVersion(inputFilePath *string, xPathPattern *string, baseVersionRegex *string) string {
 	// rawVersionString looks like 1.0.0-SNAPSHOT here
-	rawVersionString := getOriginalVersionStringFromFile(*filePath, *xPathPattern)
+	rawVersionString := getOriginalVersionStringFromFile(*inputFilePath, *xPathPattern)
 	regex, err := regexp.Compile(*baseVersionRegex)
 	if err != nil {
 		panic(err)
@@ -44,18 +52,18 @@ func getBaseVersion(filePath *string, xPathPattern *string, baseVersionRegex *st
 	return baseVersion
 }
 
-func getOriginalVersionStringFromFile(filePath string, xPathPattern string) string {
+func getOriginalVersionStringFromFile(inputFilePath string, xPathPattern string) string {
 	// read file
-	fileContentBytes, err := ioutil.ReadFile(filePath)
+	fileContentBytes, err := ioutil.ReadFile(inputFilePath)
 	if err != nil {
-		panic(fmt.Sprintf("Error: Could not read file \"%s\"\n", filePath))
+		panic(fmt.Sprintf("Error: Could not read file \"%s\"\n", inputFilePath))
 	}
 	fileContentString := string(fileContentBytes)
 
 	// process
 	if xPathPattern == "" {
 		return fileContentString
-	} else if strings.HasSuffix(strings.ToLower(filePath), ".xml") {
+	} else if strings.HasSuffix(strings.ToLower(inputFilePath), ".xml") {
 		doc, err := xmlquery.Parse(strings.NewReader(fileContentString))
 		if err != nil {
 			panic(err)
@@ -68,10 +76,10 @@ func getOriginalVersionStringFromFile(filePath string, xPathPattern string) stri
 	}
 }
 
-func handleFlags() (*string, *string, *string, *bool) {
-	filePath := flag.String("filePath", "no filePath provided", "filePath to a filename "+
+func handleFlags() (*string, *string, *string, *bool, *string) {
+	inputFilePath := flag.String("inputFilePath", "no inputFilePath provided", "filePath to a filename "+
 		"including the extensions, of which the base version should be read")
-	xPathPattern := flag.String("xPathPattern", "", "[optional] Only required when filePath"+
+	xPathPattern := flag.String("xPathPattern", "", "[optional] Only required when inputFilePath"+
 		"refers to a file that needs special parsing (e.g. to read base version from xml/json file). "+
 		"XPath Pattern to select the version. If empty, the whole content of the file will be used as base "+
 		"version string.")
@@ -82,12 +90,15 @@ func handleFlags() (*string, *string, *string, *bool) {
 		"Example of calculated version: 0.0.1+2022-02-17T11:12:27+01:00"+
 		"The timestamp format is described here: "+
 		"https://www.ietf.org/rfc/rfc3339.txt. Go defines a time format string with that name!")
+	resultFilePath := flag.String("resultFilePath", "", "[optional] Writes the calculated SemVer "+
+		"to this file. The same version is also printed on stdout, but in some cases the output to file might be "+
+		"preferred.")
 	flag.Parse()
-	return filePath, xPathPattern, baseVersionRegex, timestampRFC3339
+	return inputFilePath, xPathPattern, baseVersionRegex, timestampRFC3339, resultFilePath
 }
 
-func getCommitCount(filePath string) int {
-	dirPath := filepath.Dir(filePath)
+func getCommitCount(inputFilePath string) int {
+	dirPath := filepath.Dir(inputFilePath)
 	repoPath := findGitRootRecursive(dirPath)
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
@@ -111,7 +122,7 @@ func getCommitCount(filePath string) int {
 
 func findGitRootRecursive(basePath string) string {
 	if basePath == "" {
-		panic("Could not find a .git directory! All parent folders of given parameter filePath were searched")
+		panic("Could not find a .git directory! All parent folders of given parameter inputFilePath were searched")
 	}
 	gitDirPath := filepath.Join(basePath, ".git")
 	_, err := os.Stat(gitDirPath)
